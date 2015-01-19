@@ -2,6 +2,7 @@
 
 #include "stdafx.h"
 #include "compiler.h"
+#include <stdint.h>
 #include <vector>
 #include <fstream>
 
