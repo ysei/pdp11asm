@@ -1,34 +1,26 @@
+//! Добавить H числа
 // PDP11 Assembler (c) 15-01-2015 vinxru
 
-#include <stdafx.h>
+#include "stdafx.h"
 #include "parser.h"
-#include <limits.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdexcept>
 
-static std::string i2s(int i) {
+static std::string i2s(size_t i) {
   char buf[32];
-  _itoa_s(i, buf, 10);
+  sprintf_s(buf, sizeof(buf), "%i", int(i)); // а х.з.
   return buf;
 }
 
 //-----------------------------------------------------------------------------
 
-static bool tryMulAddI(int& a, int b, int c) {
-  __int64 x =__int64(a)*__int64(b);
-  if(x < INT_MIN || x > INT_MAX) return false;
-  x += c;
-  if(x < INT_MIN || x > INT_MAX) return false;
-  a = int(x);
-  return true;
-}
-
-//-----------------------------------------------------------------------------
-
-static int findx(const char** a, const std::string& s, int si) {
+static int findx(const char** a, const char* s, size_t si) {
   for(int i=0; *a; a++, i++)
-    if(0==strncmp(*a, s.c_str(), si))
+    if(0==strncmp(*a, s, si))
       return i;
   for(int i=0; *a; a++, i++)
-    if(*a==s)
+    if(0==strcmp(*a, s))
       return i;
   return -1;
 }
@@ -46,10 +38,10 @@ Parser::Parser() {
   sigCol = prevCol = col = 1;
 
   token = ttEof;
-  tokenInt = 0;
+  tokenNum = 0;
   tokenText[0] = 0;
 
-  loadedInt = 0;
+  loadedNum = 0;
   loadedText[0] = 0;
 }
 
@@ -63,7 +55,7 @@ void Parser::getLabel(Label& label) {
 
 //-----------------------------------------------------------------------------
 
-void Parser::init(const char* buf, bool dontCallNextToken) {
+void Parser::init(const char* buf) {
   line = col = 1;
   prevCursor = cursor = buf;
   token = ttEof;   
@@ -81,7 +73,7 @@ void Parser::nextToken() {
       strcpy_s(loadedText, tokenText);
       break;
     case ttInteger:
-      loadedInt = tokenInt;
+      loadedNum = tokenNum;
   }
 
   // sig - это до пробелов
@@ -102,7 +94,7 @@ void Parser::nextToken() {
     prevCol =col;
     prevCursor=cursor;
 
-    while(true) {
+    for(;;) {
       char c=*cursor;    
       if(c==0) {
         token=ttEof;
@@ -144,12 +136,13 @@ bool Parser::ifToken(const char* t) {
 //-----------------------------------------------------------------------------
 
 void Parser::nextToken2() {
-  int tokenText_ptr = 0;
+  size_t tokenText_ptr = 0;
+  tokenText[0] = 0; //! important
 
   char c=*cursor++;
 
   if(c=='_' || (c>='a' && c<='z') || (c>='A' && c<='Z')) {
-    while(true) {
+    for(;;) {
       if(tokenText_ptr == maxTokenText) syntaxError("Too large word");
       tokenText[tokenText_ptr++]=c;
       c = *cursor;
@@ -161,13 +154,13 @@ void Parser::nextToken2() {
 
     if(!cfg_caseSel)
       for(char* p = tokenText, *pe = tokenText + tokenText_ptr; p < pe; p++)
-        *p = ::toupper(*p);
+        *p = (char)toupper(*p);
     return;
   }
 
   if(c=='\'' || c=='"') {
     char quoter=c;
-    while(true) {
+    for(;;) {
       c=*cursor;
       if(c==0 || c==10 || c==13) syntaxError("Unterminated string");
       cursor++; 
@@ -215,57 +208,59 @@ void Parser::nextToken2() {
   }
 
   if(c>='0' && c<='9') {
-    token = ttInteger;
-    int n = 0;
-    // Если число начинается с 0x - то читаем 16-ричное
-    if(c=='0' && (cursor[0]=='x' || cursor[0]=='X')) {
-      cursor++; // Пропускаем X
-      while(true) {        
-        c=*cursor;      
-        int e;
-        if(c>='0' && c<='9') e=c-'0';    else
-        if(c>='a' && c<='f') e=c-'a'+10; else
-        if(c>='A' && c<='F') e=c-'A'+10; else break;
-        if(!tryMulAddI(n,16,e)) syntaxError("Too large number");
-        cursor++;
-      }
-      tokenInt = n;
-      return;
-    }
-    // Если число начинается с 0 - то читаем 8-ричное
+    int radix = 0;
+
+    // Если число начинается с 0x - то читаем 16-ричное    
     if(c=='0') {
-      while(true) {        
-        c=*cursor;      
-        int e;
-        if(c>='0' && c<='7') e=c-'0'; else break;
-        if(!tryMulAddI(n,8,e)) syntaxError("Too large number");
-        cursor++;
+      if(cursor[0]=='x' || cursor[0]=='X') {
+        cursor+=2; // Пропускаем X
+        radix = 16;
+      } else {
+        // Если число начинается с 0 - то читаем 8-ричное    
+        radix = 8;
       }
-      tokenInt = n;
-      return;
     }
-    // Читаем целое, плавающе и двоичное число 
-    bool canBits = (c=='0' || c=='1'); // Удалось посчитать Bits (нет переполнения, алфавит)
-    bool canInt = true; // Удалось посчитать Integer (нет переполнения)
-    n = (c - '0');
-    int b = n;
-    while(true) {
-      c = *cursor;
-      if(c<'0' || c>'9') break;
-      c -= '0';
-      if(canInt && !tryMulAddI(n,10,c)) canInt=false;      
-      canBits &= (c=='0' || c=='1');
-      if(canBits) { if(b&0x80000000) canBits=false; else { b<<=2; if(c=='1') b|=1; } }
-      cursor++;
+
+    // Ищем конец числа и определяем возможныцй тип
+    bool cb=true, co=true, cd=true;
+    cursor--;
+    const char* e = cursor; 
+    for(;;) {
+      c = *e;
+      if(!((c>='0' && c<='9') || (c>='A' && c<='F') || (c>='a' && c<='f'))) break;
+      e++;
+      if(c=='0' || c=='1') continue; cb = false;
+      if(c>='0' && c<='7') continue; co = false;
+      if(c>='0' && c<='9') continue; cd = false;
     }
-    if(c=='b' || c=='B') { 
-      if(!canBits) syntaxError("Too large number");
-      cursor++; 
-      tokenInt = b;
-      return; 
+
+    // Постфикс определяет тип числа    
+    const char* pe = e;
+    switch(c) {
+      case 'b': case 'B': if(radix==16) syntaxError("Incorrect number"); radix = 2; pe++; break;
+      case 'o': case 'O': if(radix==16) syntaxError("Incorrect number"); radix = 8; pe++; break;
+      case 'h': case 'H': if(radix==16) syntaxError("Incorrect number"); radix = 16; pe++; break;
+      default: if(radix==0) radix = 10;
     }
-    if(!canInt) syntaxError("Too large number");
-    tokenInt = n; 
+
+    // Контроль
+    switch(radix) {
+      case 2: if(!cb) syntaxError("Incorrect number");
+      case 8: if(!co) syntaxError("Incorrect number");
+      case 10: if(!cd) syntaxError("Incorrect number");
+    }
+
+    // Преобразуем
+    num_t n = 0;
+    for(;cursor < e; cursor++) {
+      c = *cursor;      
+      n *= radix;
+      if(c>='a' && c<='f') n+=(c-'a'+10); else
+      if(c>='A' && c<='F') n+=(c-'A'+10); else n+=(c-'0');
+    }
+    cursor = pe;
+    token = ttInteger;
+    tokenNum = n; 
     return;
   }
  
@@ -278,7 +273,7 @@ void Parser::nextToken2() {
   if(cfg_operators) {
     // Добавляем остальные символы
     tokenText_ptr = 1;
-    while(true) {
+    for(;;) {
       c = *cursor;
       if(c==0) break;
       tokenText[tokenText_ptr] = c;
@@ -293,8 +288,8 @@ void Parser::nextToken2() {
   // Комментарии
   if(cfg_remark) {
     for(int j=0; cfg_remark[j]; j++) {
-      if(0==_strcmpi(tokenText,cfg_remark[j])) {
-        while(true) {
+      if(0==strcmp(tokenText,cfg_remark[j])) {
+        for(;;) {
           c=*cursor;
           if(c==0 || c==10) break;
           cursor++;
@@ -308,8 +303,8 @@ void Parser::nextToken2() {
 
 //-----------------------------------------------------------------------------
 
-void Parser::syntaxError(const char* text) {  
-  throw std::exception((fileName + "(" + i2s(prevLine) + "," + i2s(prevCol) + "): " + (text[0]==0 ? "Syntax error" : text)).c_str());
+void Parser::syntaxError(const char* text) {    
+  throw std::runtime_error((fileName + "(" + i2s(prevLine) + "," + i2s(prevCol) + "): " + (text ? text : "Syntax error")).c_str());
 }
 
 //-----------------------------------------------------------------------------
@@ -323,10 +318,10 @@ void Parser::jump(Label& label) {
 
 //-----------------------------------------------------------------------------
 
-bool Parser::ifToken(const char** a) {
+bool Parser::ifToken(const char** a, int& n) {
   for(const char** i = a; *i; i++) {
     if(ifToken(*i)) {
-      loadedInt = i - a;
+      n = i - a;
       return true;
     }
   }

@@ -1,11 +1,11 @@
 // PDP11 Assembler (c) 15-01-2015 vinxru
 
-#include <stdafx.h>
+#include "stdafx.h"
 #include "compiler.h"
 
 struct SimpleCommand {
   const char* name;
-  int code;
+  short code;
 };
 
 struct ImmCommand {
@@ -17,15 +17,15 @@ struct ImmCommand {
 
 inline void Compiler::write(int n, Arg& a) {
   out.write(n);
-  if(a.needExt1) out.write(a.ext - (a.subip ? out.writePos+2 : 0) );  
+  if(a.used) out.write(a.val - (a.subip ? short(out.writePtr+2) : 0));  
 }
 
 //-----------------------------------------------------------------------------
 
 inline void Compiler::write(int n, Arg& a, Arg& b) {
   out.write(n);
-  if(a.needExt1) out.write(a.ext - (a.subip ? out.writePos+2 : 0) );  
-  if(b.needExt1) out.write(b.ext - (b.subip ? out.writePos+2 : 0) );  
+  if(a.used) out.write(a.val - (a.subip ? short(out.writePtr+2) : 0) );  
+  if(b.used) out.write(b.val - (b.subip ? short(out.writePtr+2) : 0) );  
 }
 
 //-----------------------------------------------------------------------------
@@ -55,11 +55,11 @@ void Compiler::readArg(Arg& a) {
   bool x = p.ifToken("@");
   bool n = p.ifToken("#");
 
-  int ii;
-  if(ifConst(ii)) { // Вычесть из адреса смещение, если не поствалены @ #
+  Parser::num_t ii;
+  if(ifConst3(ii)) { // Вычесть из адреса смещение, если не поствалены @ #
     a.subip = (!x && !n); 
-    a.ext = ii;
-    a.needExt1 = true;
+    a.val = short(ii); // Без контроля переполнения
+    a.used = true;
     Parser::Label pl(p);
     if(!n && p.ifToken("(")) {
       if(p.ifToken(")")) { p.jump(pl); goto xxx; }
@@ -73,29 +73,29 @@ xxx:
       mode = n ? 2 : 6;
     }
     if(x) mode++;
-    a.code = (mode<<3) | reg;
+    a.code = short((mode<<3) | reg);
     return;
   }
   if(n) p.syntaxError();
   bool d = p.ifToken("-");
-  a.needExt1 = false;
+  a.used = false;
   if(!d) {
-    int ii;
-    if(ifConst(ii)) {
+    Parser::num_t ii;
+    if(ifConst3(ii)) {
       a.subip = !x && !n;
-      a.needExt1 = true;
-      a.ext = ii;
+      a.used = true;
+      a.val = short(ii); // Без контроля переполнения
     }
   }
-  bool o = p.ifToken("("); if((x || d || a.needExt1) && !o) p.needToken("(");  
+  bool o = p.ifToken("("); if((x || d || a.used) && !o) p.needToken("(");  
   reg = readReg();
   if(o) p.needToken(")");
   bool i = false;
-  if(o && (!d && !a.needExt1)) i = p.ifToken("+");
-  if(x && !d && !i && !a.needExt1) { a.needExt1=true; a.ext=0; }
-  mode = !o ? 0 : i ? 2 : d ? 4 : a.needExt1 ? 6 : 1;
+  if(o && (!d && !a.used)) i = p.ifToken("+");
+  if(x && !d && !i && !a.used) { a.used=true; a.val=0; }
+  mode = !o ? 0 : i ? 2 : d ? 4 : a.used ? 6 : 1;
   if(x) mode++;
-  a.code = (mode<<3) | reg;
+  a.code = short((mode<<3) | reg);
 }
 
 //-----------------------------------------------------------------------------
@@ -108,8 +108,9 @@ bool Compiler::compileLine_pdp11() {
     "sez", 0264, "sen", 0270, "scc", 0277, "ccc", 0257, 0
   };
 
-  if(p.ifToken(simpleCommands)) {
-    out.write(simpleCommands[p.loadedInt].code);
+  int n;
+  if(p.ifToken(simpleCommands, n)) {
+    out.write(simpleCommands[n].code);
     return true;
   }
 
@@ -126,8 +127,7 @@ bool Compiler::compileLine_pdp11() {
     "sxt", 00067, "mtps", 01064, "mfps", 01067, 0
   };
 
-  if(p.ifToken(oneCommands)) {
-    int n = p.loadedInt;
+  if(p.ifToken(oneCommands, n)) {
     Arg a;
     readArg(a);
     write((oneCommands[n].code<<6)|a.code, a);
@@ -144,14 +144,13 @@ bool Compiler::compileLine_pdp11() {
     0 
   };
 
-  if(p.ifToken(jmpCommands)) {
-    int n = p.loadedInt;
-    int i = readConst();
-    i-=out.writePos+2;
-    if(i&1) p.syntaxError("unaligned");
-    i/=2;
-    if(step2 && (i<-128 || i>127)) p.syntaxError("Too far jump");
-    out.write((jmpCommands[n].code<<6) | (i&0xFF));
+  if(p.ifToken(jmpCommands, n)) {
+    long long i = (long long)readConst3(); //! Тут полная неразбериха с signed/unsigned, size_t/Parser::num_t
+    i -= out.writePtr; i -= 2;
+    if(i & 1) p.syntaxError("Unaligned");
+    i /= 2;
+    if(step2 && (i < -128 || i > 127)) p.syntaxError("Too far jump");
+    out.write((jmpCommands[n].code<<6) | (i & 0xFF));
     return true;
   }
 
@@ -161,11 +160,10 @@ bool Compiler::compileLine_pdp11() {
     "emt", 0104000, 0377, "trap", 104400, 0377, "mark", 0006400, 077, 0
   };
 
-  if(p.ifToken(immCommands)) {
-    int n = p.loadedInt;
+  if(p.ifToken(immCommands, n)) {
     p.needToken(ttInteger);
-    if(p.loadedInt<0 || p.loadedInt>immCommands[n].max) p.syntaxError();
-    out.write(immCommands[n].code | p.loadedInt);
+    if(p.loadedNum > immCommands[n].max) p.syntaxError();
+    out.write(immCommands[n].code | int(p.loadedNum));
     return true;
   }
 
@@ -176,8 +174,7 @@ bool Compiler::compileLine_pdp11() {
     "movb", "cmpb", "bitb", "bicb", "bisb", "sub", 0
   };
 
-  if(p.ifToken(twoCommands)) {
-    int n = p.loadedInt;
+  if(p.ifToken(twoCommands, n)) {
     Arg src, dest;
     readArg(src);
     p.needToken(",");
@@ -192,8 +189,7 @@ bool Compiler::compileLine_pdp11() {
     "jsr", 004000, "xor", 0074000, 0
   };
 
-  if(p.ifToken(aCommands)) {
-    int n = p.loadedInt;
+  if(p.ifToken(aCommands, n)) {
     int r = readReg();
     p.needToken(",");
     Arg a;
@@ -205,11 +201,11 @@ bool Compiler::compileLine_pdp11() {
   if(p.ifToken("sob")) {
     int r = readReg();
     p.needToken(",");
-    int n = (out.writePos+2) - readConst();
+    Parser::num_t n = (out.writePtr + 2) - readConst3();
     if(n&1) p.syntaxError();
     n/=2;
-    if(n<0 || n>63) p.syntaxError();
-    out.write(0077000 | (r<<6) | (n&077));
+    if(n>63) p.syntaxError();
+    out.write(0077000 | (r<<6) | (int(n)&077));
     return true;
   }
 

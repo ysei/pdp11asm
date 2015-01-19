@@ -4,6 +4,7 @@
 #include "lstwriter.h"
 #include "parser.h"
 #include "output.h"
+#include <limits>
 
 class Compiler {
 public:
@@ -11,29 +12,38 @@ public:
   Parser p;
   Output out;
   bool step2;
-  std::map<std::string, int> labels;
+  bool convert1251toKOI8R;
+  std::map<std::string, Parser::num_t> labels;
 
   // c_common.cpp
   Compiler();
-  void compileFile(wchar_t* fileName);
+  void compileFile(syschar_t* fileName);
   void compileLine();
-  bool ifConst(int& out);
-  int  readConst();
+  bool ifConst3(Parser::num_t& out);
+  Parser::num_t readConst3();
 
   // c_bitmap.cpp
   bool compileLine_bitmap();
 
   // c_pdp11.cpp
   struct Arg {
-    int ext, code;  
-    bool needExt1, subip;
+    bool used;
+    int  val;
+    int  code;  
+    bool subip;
   };
 
   void write(int n, Arg& a);
   void write(int n, Arg& a, Arg& b);
   bool regInParser();
-  int  readReg();
+  int readReg();
   void readArg(Arg& a);
   bool compileLine_pdp11();
 };
 
+//-----------------------------------------------------------------------------
+
+inline size_t ullong2size_t(unsigned long long a) {
+  if(a > std::numeric_limits<size_t>::max()) throw std::runtime_error("Too big number");
+  return (size_t)a;
+}

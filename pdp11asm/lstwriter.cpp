@@ -1,24 +1,25 @@
 // PDP11 Assembler (c) 15-01-2015 vinxru
 
-#include <stdafx.h>
+#include "stdafx.h"
 #include "lstwriter.h"
 #include <string>
 #include <fstream>
+#include <assert.h>
 #include "compiler.h"
 
-static int linelen(const char* p) {
-  auto a = strchr(p, '\r'), b = strchr(p, '\n');
+static size_t linelen(const char* p) {
+  const char *a = strchr(p, '\r'), *b = strchr(p, '\n');
   if(a == 0 && b == 0) return strlen(p);
-  if(a == 0 || b < a) return b - p;  
-  return a - p;  
+  if(a == 0 || b < a) return (size_t)(b - p);
+  return (size_t)(a - p);  
 }
 
 //-----------------------------------------------------------------------------
 
-void LstWriter::appendBuffer(const char* data, int size) {
-  auto newSize = buffer.size() + size; //! Тут может быть переполнение
+void LstWriter::appendBuffer(const char* data, size_t size) {
+  size_t newSize = buffer.size() + size; //! Тут может быть переполнение
   if(newSize > buffer.capacity()) {
-    auto gran = buffer.capacity() + buffer.capacity()/2; //! Тут может быть переполнение
+    size_t gran = buffer.capacity() + buffer.capacity()/2; //! Тут может быть переполнение
     if(newSize < gran) newSize = gran;
     buffer.reserve(newSize);
   }
@@ -30,10 +31,10 @@ void LstWriter::appendBuffer(const char* data, int size) {
 void LstWriter::beforeCompileLine() {
   if(!out || !p) return;
   out->writePosChanged = false;
-  prev_writePos = out->writePos;
+  prev_writePtr = out->writePtr;
   prev_sigCursor = p->sigCursor;
   char info[256];
-  sprintf_s(info, "%04i %04X ", p->line, out->writePos);
+  sprintf_s(info, sizeof(info), "%04i %04X ", int(p->line), int(out->writePtr));
   appendBuffer(info);
 }
 
@@ -43,17 +44,16 @@ void LstWriter::afterCompileLine() {
   if(!out) return;
   const int MAX_OPCODES = 3;
   char info[MAX_OPCODES*7 + 16];
-  auto ptr = info;
+  char* ptr = info;
   if(!out->writePosChanged) {
-    int l = (out->writePos-prev_writePos)/2;
+    size_t l = (out->writePtr - prev_writePtr) / 2;
     if(l > MAX_OPCODES) l = MAX_OPCODES;
     for(; l > 0; l--) {
-      sprintf_s(ptr, info+sizeof(info)-ptr, "%06o ", (unsigned int)(*(unsigned short*)(out->writeBuf + prev_writePos)));
-      prev_writePos += 2;
-      ptr += 7;
+      ptr += sprintf_s(ptr, info+sizeof(info)-ptr, "%06o ", (unsigned int)(*(unsigned short*)(out->writeBuf + prev_writePtr)));
+      prev_writePtr += 2;
     }
   }
-  memset(ptr, ' ', info+sizeof(info)-ptr);
+  memset(ptr, ' ', info+sizeof(info)-ptr); // Почему то указатель - указатель не дает size_t!
   info[MAX_OPCODES*7] = 9;
   info[MAX_OPCODES*7+1] = 9;
   info[MAX_OPCODES*7+2] = 0;
@@ -64,17 +64,21 @@ void LstWriter::afterCompileLine() {
 
 //-----------------------------------------------------------------------------
 
+static void replaceExtension(std::string& out, const char* fileName, const char* ext) {
+  const char* extSep = strrchr(fileName, '.');
+  size_t fileNameLen = (extSep && strrchr(extSep, '/') == 0 && strrchr(extSep, '\\') == 0) ? (extSep - fileName) : strlen(fileName);    
+  out.reserve(fileNameLen + strlen(ext));
+  out.assign(fileName, fileNameLen);
+  out += ext;  
+}
+
+//-----------------------------------------------------------------------------
+
 void LstWriter::writeFile(const char* fileName) {
   std::string fileName2;
-  auto extSep = strrchr(fileName, '.');
-  if(extSep && strrchr(extSep, '/') == 0 && strrchr(extSep, '\\') == 0) {
-    fileName2.assign(fileName, extSep - fileName);      
-  } else {
-    fileName2 = fileName;
-  }
-  fileName2 += ".lst";
+  replaceExtension(fileName2, fileName, ".lst");
   std::ofstream file;
-  file.open(fileName2);
-  if(!file.is_open()) throw std::exception("Can't create lst file");
+  file.open(fileName2.c_str());
+  if(!file.is_open()) throw std::runtime_error(("Can't create lst file (" + fileName2 + ")").c_str());
   file << buffer;
 }

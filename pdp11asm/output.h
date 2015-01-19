@@ -2,12 +2,13 @@
 
 #pragma once
 
-#include <exception>
+#include <string.h>
+#include <stdexcept>
 
 class Output {
 public:
   char writeBuf[65536];
-  int writePos;
+  size_t writePtr;
   bool writePosChanged;
 
   inline Output() {
@@ -15,18 +16,18 @@ public:
   }
 
   inline void init() {
-    writePos = 0;
+    writePtr = 0;
     writePosChanged = 0;
     memset(writeBuf, 0, sizeof(writeBuf));
   }
 
-  inline void write(void* data, int n) {
-    if(writePos + n > 65536) throw std::exception("64K overflow");
-    memcpy(writeBuf + writePos, data, n);
-    writePos += n;
+  inline void write(void* data, size_t n) {
+    if(writePtr + n > 65536) throw std::runtime_error("64K overflow");
+    memcpy(writeBuf + writePtr, data, n);
+    writePtr += n;
   }
 
-  inline void write(short n) { 
+  inline void write(int n) { 
     write(&n, 2); 
   }
 };

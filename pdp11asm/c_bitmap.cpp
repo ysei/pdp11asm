@@ -5,14 +5,14 @@
 #include <vector>
 #include <fstream>
 
-static void convertBitmap2(std::vector<char>& dest, char* src, int w, int h, int bpl, bool t) {
-  int destbpl = (w+3)/4 * (t ? 2 : 1);
+static void convertBitmap2(std::vector<char>& dest, char* src, size_t w, size_t h, size_t bpl, bool t) {
+  size_t destbpl = (w+3)/4 * (t ? 2 : 1);
   dest.resize(destbpl * h);
   char* destp = &dest[0];
   memset(destp, 0, h*destbpl);
-  for(int y=0; y<h; y++) {
-    for(int x=0; x<w; x++) {
-      int c = (*(int*)(src+x*3+(h-1-y)*bpl)) & 0xFFFFFF;
+  for(size_t y=0; y<h; y++) {
+    for(size_t x=0; x<w; x++) {
+      long c = (*(long*)(src+x*3+(h-1-y)*bpl)) & 0xFFFFFF;
       bool tr = c==0xFF00FF;
       if(c==0) c=0;
       else if(c==0x0000FF) c=1;
@@ -37,14 +37,14 @@ static void convertBitmap2(std::vector<char>& dest, char* src, int w, int h, int
 
 //-----------------------------------------------------------------------------
 
-static void convertBitmap1(std::vector<char>& dest, char* src, int w, int h, int bpl, bool t) {
-  int destbpl = (w+7)/8 * (t ? 2 : 1);
+static void convertBitmap1(std::vector<char>& dest, char* src, size_t w, size_t h, size_t bpl, bool t) {
+  size_t destbpl = (w+7)/8 * (t ? 2 : 1);
   dest.resize(destbpl * h);
   char* destp = &dest[0];
   memset(destp, 0, h*destbpl);
-  for(int y=0; y<h; y++) {
-    for(int x=0; x<w; x++) {
-      int c = (*(int*)(src+x*3+(h-1-y)*bpl)) & 0xFFFFFF;
+  for(size_t y=0; y<h; y++) {
+    for(size_t x=0; x<w; x++) {
+      long c = (*(long*)(src+x*3+(h-1-y)*bpl)) & 0xFFFFFF;
       bool tr = c==0xFF00FF;
       if(c==0) c=0; else c=1;
       if(t) {
@@ -67,22 +67,22 @@ static void convertBitmap1(std::vector<char>& dest, char* src, int w, int h, int
 //-----------------------------------------------------------------------------
 
 bool Compiler::compileLine_bitmap() {
-  bool t;
-  if((t=p.ifToken("insert_bitmap2t")) || p.ifToken("insert_bitmap2")) {
+  bool t = p.ifToken("insert_bitmap2t");
+  if(t || p.ifToken("insert_bitmap2")) {
     p.needToken(ttString2);
-    char fileName[Parser::maxTokenText];
+    Parser::TokenText fileName;
     strcpy_s(fileName, p.loadedText);
     p.needToken(",");
-    int width = readConst();
+    size_t width = ullong2size_t(readConst3());
     p.needToken(",");
-    int height = readConst();
+    size_t height = ullong2size_t(readConst3());
     if(step2) {
-      int bpl = (width*3+3)/4*4;
-      if(width<=0 || height<=0 || bpl*height+out.writePos>65536) p.syntaxError();
+      size_t bpl = (width*3+3)/4*4;
+      if(width<=0 || height<=0 || bpl*height+out.writePtr>65536) p.syntaxError();
       std::ifstream f;
       f.open(fileName, std::ifstream::in|std::ifstream::binary);
       if(!f.is_open()) p.syntaxError("Can't open file");
-      f.rdbuf()->pubseekoff(-height*bpl, std::fstream::end);
+      f.rdbuf()->pubseekoff(-std::streamoff(height*bpl), std::fstream::end);
       std::vector<char> data;
       data.resize(height*bpl+4);
       f.rdbuf()->sgetn(&data[0], height*bpl);
@@ -90,28 +90,29 @@ bool Compiler::compileLine_bitmap() {
       convertBitmap2(dest, &data[0], width, height, bpl, t);
       out.write(&dest[0], dest.size());
     } else {
-      int s = (width+3)/4*height*(t ? 2 : 1);
-      out.writePos += s;
+      size_t s = (width+3)/4*height*(t ? 2 : 1);
+      out.writePtr += s;
     }
-    if(out.writePos&1) out.writePos++;
+    if(out.writePtr&1) out.writePtr++;
     return true;
   }
 
-  if((t=p.ifToken("insert_bitmap1t")) || p.ifToken("insert_bitmap1")) {
+  t = p.ifToken("insert_bitmap1t");
+  if(t || p.ifToken("insert_bitmap1")) {
     p.needToken(ttString2);
-    char fileName[Parser::maxTokenText];
+    Parser::TokenText fileName;
     strcpy_s(fileName, p.loadedText);
     p.needToken(",");
-    int width = readConst();
+    size_t width = ullong2size_t(readConst3());
     p.needToken(",");
-    int height = readConst();
+    size_t height = ullong2size_t(readConst3());
     if(step2) {
-      int bpl = (width*3+3)/4*4;
-      if(width<=0 || height<=0 || bpl*height+out.writePos>65536) p.syntaxError();
+      size_t bpl = (width*3+3)/4*4;
+      if(width<=0 || height<=0 || bpl*height+out.writePtr>65536) p.syntaxError();
       std::ifstream f;
       f.open(fileName, std::ifstream::in|std::ifstream::binary);
       if(!f.is_open()) p.syntaxError("Can't open file");
-      f.rdbuf()->pubseekoff(-height*bpl, std::fstream::end);
+      f.rdbuf()->pubseekoff(-std::streamoff(height*bpl), std::fstream::end);
       std::vector<char> data;
       data.resize(height*bpl+4);
       f.rdbuf()->sgetn(&data[0], height*bpl);
@@ -119,10 +120,10 @@ bool Compiler::compileLine_bitmap() {
       convertBitmap1(dest, &data[0], width, height, bpl, t);
       out.write(&dest[0], dest.size());
    } else {
-      int s = (width+7)/8*height*(t ? 2 : 1);
-      out.writePos += s;
+      size_t s = (width+7)/8*height*(t ? 2 : 1);
+      out.writePtr += s;
     }
-    if(out.writePos&1) out.writePos++;
+    if(out.writePtr&1) out.writePtr++;
     return true;
   }
 
