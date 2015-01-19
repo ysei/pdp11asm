@@ -142,7 +142,7 @@ retry:
   // Установка адреса
   if(p.ifToken("org")) {
     p.needToken(ttInteger);
-    if(p.loadedNum >= sizeof(out.writeBuf)) p.syntaxError();
+    if(p.loadedNum > sizeof(out.writeBuf)) p.syntaxError();
     out.writePosChanged = true;
     out.writePtr = (size_t)p.loadedNum;
     return;
@@ -160,7 +160,7 @@ retry:
     }
     // Работает только на втором проходе
     if(step2) {
-      if(stop<=start || stop>=sizeof(out.writeBuf)) p.syntaxError();
+      if(stop<=start || stop>sizeof(out.writeBuf)) p.syntaxError();
       size_t length = stop - start;
       std::ofstream f;
       f.open(fileName, std::ofstream::binary|std::ofstream::out);

@@ -12,7 +12,7 @@ static void convertBitmap2(std::vector<char>& dest, char* src, size_t w, size_t 
   memset(destp, 0, h*destbpl);
   for(size_t y=0; y<h; y++) {
     for(size_t x=0; x<w; x++) {
-      long c = (*(long*)(src+x*3+(h-1-y)*bpl)) & 0xFFFFFF;
+      int32_t c = (*(int32_t*)(src+x*3+(h-1-y)*bpl)) & 0xFFFFFF;
       bool tr = c==0xFF00FF;
       if(c==0) c=0;
       else if(c==0x0000FF) c=1;
@@ -44,7 +44,7 @@ static void convertBitmap1(std::vector<char>& dest, char* src, size_t w, size_t 
   memset(destp, 0, h*destbpl);
   for(size_t y=0; y<h; y++) {
     for(size_t x=0; x<w; x++) {
-      long c = (*(long*)(src+x*3+(h-1-y)*bpl)) & 0xFFFFFF;
+      int32_t c = (*(int32_t*)(src+x*3+(h-1-y)*bpl)) & 0xFFFFFF;
       bool tr = c==0xFF00FF;
       if(c==0) c=0; else c=1;
       if(t) {
