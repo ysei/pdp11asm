@@ -28,6 +28,9 @@ int main(int argc, char** argv) {
     // Выход с ошибками
   } catch(std::exception& e) {
     std::cout << e.what() << std::endl;
+#ifdef _DEBUG
+    char x; std::cin >> x;
+#endif
     return 1;
   }
 }

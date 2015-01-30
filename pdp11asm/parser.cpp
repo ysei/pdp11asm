@@ -32,6 +32,7 @@ Parser::Parser() {
   cfg_cescape=false;
   cfg_remark = 0;
   cfg_operators = 0;
+  cfg_decimalnumbers = false;
 
   sigCursor = prevCursor = cursor = 0;
   sigLine = prevLine = line = 1;
@@ -43,6 +44,8 @@ Parser::Parser() {
 
   loadedNum = 0;
   loadedText[0] = 0;
+
+  init("");
 }
 
 //-----------------------------------------------------------------------------
@@ -59,6 +62,7 @@ void Parser::init(const char* buf) {
   line = col = 1;
   prevCursor = cursor = buf;
   token = ttEof;   
+  altstring = 0;
   nextToken();
 }
 
@@ -158,7 +162,7 @@ void Parser::nextToken2() {
     return;
   }
 
-  if(c=='\'' || c=='"') {
+  if(c=='\'' || c=='"' || c==altstring) {
     char quoter=c;
     for(;;) {
       c=*cursor;
@@ -209,9 +213,11 @@ void Parser::nextToken2() {
 
   if(c>='0' && c<='9') {
     int radix = 0;
+    bool neg = (c=='-');
+    if(neg) c = *cursor++;
 
     // Если число начинается с 0x - то читаем 16-ричное    
-    if(c=='0') {
+    if(c=='0' && radix==0) {
       if(cursor[0]=='x' || cursor[0]=='X') {
         cursor+=2; // Пропускаем X
         radix = 16;
@@ -235,12 +241,13 @@ void Parser::nextToken2() {
     }
 
     // Постфикс определяет тип числа    
-    const char* pe = e;
+    const char* pe = e;    
     switch(c) {
       case 'b': case 'B': if(radix==16) syntaxError("Incorrect number"); radix = 2; pe++; break;
       case 'o': case 'O': if(radix==16) syntaxError("Incorrect number"); radix = 8; pe++; break;
       case 'h': case 'H': if(radix==16) syntaxError("Incorrect number"); radix = 16; pe++; break;
-      default: if(radix==0) radix = 10;
+      case '.':           if(radix==16) syntaxError("Incorrect number"); radix = 10; pe++; break;
+      default: if(radix==0) radix = cfg_decimalnumbers ? 10 : 8;
     }
 
     // Контроль
@@ -260,6 +267,7 @@ void Parser::nextToken2() {
     }
     cursor = pe;
     token = ttInteger;
+    if(neg) n = 0-n;
     tokenNum = n; 
     return;
   }

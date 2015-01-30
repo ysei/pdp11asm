@@ -67,9 +67,14 @@ Compiler::Compiler() {
 
 //-----------------------------------------------------------------------------
 
-bool Compiler::ifConst3(Parser::num_t& out) {
+bool Compiler::ifConst4(Parser::num_t& out, bool numIsLabel) {
   if(regInParser()) return false;
+  if(numIsLabel && p.ifToken(ttInteger)) {
+    makeLocalLabelName();
+    goto itsLabel;
+  }
   if(p.ifToken(ttWord)) {
+itsLabel:
     std::map<std::string, Parser::num_t>::iterator l = labels.find(p.loadedText);
     if(l != labels.end()) {
       out = l->second;
@@ -96,15 +101,98 @@ bool Compiler::ifConst3(Parser::num_t& out) {
     }
     p.jump(l);
   }
+  if(p.ifToken(".")) { 
+    out = this->out.writePtr;
+    return true;
+  }
   return false;
 }
 
 //-----------------------------------------------------------------------------
 
-Parser::num_t Compiler::readConst3() {
+bool Compiler::ifConst3(Parser::num_t& a, bool numIsLabel) {
+  if(!ifConst4(a, numIsLabel)) return false;
+  static const char* ops[] = { "+", "-" };
+  int o;
+  while(p.ifToken(ops, o)) {
+    Parser::num_t b;
+    if(!ifConst4(b, numIsLabel)) p.syntaxError();
+    switch(o) {
+      case 0: a += b; break;
+      case 1: a -= b; break;
+    }
+  }
+  return true;
+}
+
+//-----------------------------------------------------------------------------
+
+Parser::num_t Compiler::readConst3(bool numIsLabel) {
   Parser::num_t i;
-  if(!ifConst3(i)) p.syntaxError();
+  if(!ifConst3(i, numIsLabel)) p.syntaxError();
   return i;
+}
+
+//-----------------------------------------------------------------------------
+
+void Compiler::compileOrg() {
+  p.needToken(ttInteger);
+  if(p.loadedNum > sizeof(out.writeBuf)) p.syntaxError();
+  out.writePosChanged = true;
+  out.writePtr = (size_t)p.loadedNum;
+  return;
+}
+
+//-----------------------------------------------------------------------------
+
+void Compiler::compileByte() {
+  for(;;) {
+    Parser::num_t c;
+    if(ifConst3(c)) {
+      if(p.ifToken("dup")) {
+        p.needToken("(");
+        Parser::num_t d = readConst3();
+        if(d>std::numeric_limits<unsigned char>::max()) p.syntaxError();
+        p.needToken(")");
+        for(;c>0; c--) out.write(&d, 1);
+      } else {
+        if(c>std::numeric_limits<unsigned char>::max()) p.syntaxError();
+        out.write(&c, 1);
+      }
+    } else {
+      p.needToken(ttString2);
+      if(convert1251toKOI8R) cp1251_to_koi8r(p.loadedText);
+      out.write(p.loadedText, strlen(p.loadedText));
+    }
+    if(!p.ifToken(",")) break;
+  }
+}
+
+//-----------------------------------------------------------------------------
+
+void Compiler::compileWord() {
+  for(;;) {
+    Parser::num_t c = readConst3();
+    if(p.ifToken("dup")) {
+      p.needToken("(");
+      Parser::num_t d = readConst3();
+      if(d>std::numeric_limits<unsigned short>::max()) p.syntaxError();
+      p.needToken(")");
+      for(;c>0; c--) out.write((short)d);
+    } else {
+      if(c>std::numeric_limits<unsigned short>::max()) p.syntaxError();
+      out.write((short)c);
+    }
+    if(!p.ifToken(",")) break;
+  }
+}
+
+//-----------------------------------------------------------------------------
+
+void Compiler::makeLocalLabelName() {
+  // p.loadedNum is unsigned
+  if(p.loadedNum > std::numeric_limits<int>::max()) p.syntaxError();
+  sprintf_s(p.loadedText, sizeof(p.loadedText), "%s@%i", lastLabel, (int)p.loadedNum);
 }
 
 //-----------------------------------------------------------------------------
@@ -115,13 +203,19 @@ retry:
   Parser::Label l(p);
   p.nextToken();
   bool label = (p.token==ttOperator && p.tokenText[0]==':' && p.tokenText[1]==0);
-  bool equ   = (p.token==ttWord && 0==strcmp(p.tokenText, "EQU"));
+  bool equ   = (p.token==ttWord && 0==strcmp(p.tokenText, "EQU")) || (p.token==ttOperator && 0==strcmp(p.tokenText, "="));
   p.jump(l);
   
   // Это метка
   if(label) {
-    p.needToken(ttWord);
-    if(!step2) labels[p.loadedText] = out.writePtr;
+    if(p.ifToken(ttInteger)) {
+      makeLocalLabelName();
+      labels[p.loadedText] = out.writePtr;
+    } else {
+      p.needToken(ttWord);
+      labels[p.loadedText] = out.writePtr;
+      strcpy_s(lastLabel, p.loadedText);
+    }
     p.needToken(":");    
     // После метки может идти команда
     if(p.token != ttEol) goto retry;
@@ -133,7 +227,7 @@ retry:
     p.needToken(ttWord);         
     Parser::TokenText name;
     strcpy_s(name, p.loadedText);
-    p.needToken("equ");
+    if(!p.ifToken("=")) p.needToken("equ");
     Parser::num_t a = readConst3();
     if(!step2) labels[name] = a;
     return;
@@ -141,11 +235,48 @@ retry:
 
   // Установка адреса
   if(p.ifToken("org")) {
-    p.needToken(ttInteger);
-    if(p.loadedNum > sizeof(out.writeBuf)) p.syntaxError();
-    out.writePosChanged = true;
-    out.writePtr = (size_t)p.loadedNum;
+    compileOrg();
     return;
+  }
+
+  // Команды MACRO11
+  if(p.ifToken(".")) {
+    // Вставить байты
+    if(p.ifToken("byte")) { 
+      compileByte();
+      return; 
+    }
+    if(p.ifToken("word")) { 
+      compileWord(); 
+      return; 
+    }
+    if(p.ifToken("end")) { 
+      return; 
+    }
+    if(p.ifToken("link")) { 
+      compileOrg();
+      return; 
+    }
+    if(p.ifToken("blkb")) { 
+      p.needToken(ttInteger); 
+      for(;p.tokenNum>0; p.tokenNum--) out.write("", 1);
+      return;
+    }
+    if(p.ifToken("blkw")) { 
+      p.needToken(ttInteger);
+      for(;p.tokenNum>0; p.tokenNum--) out.write(0); 
+      return;
+    }
+    p.altstring = '/';
+    if(p.ifToken("ascii")) {      
+      p.altstring = 0;      
+      p.needToken(ttString2);
+      if(convert1251toKOI8R) cp1251_to_koi8r(p.loadedText);
+      out.write(p.loadedText, strlen(p.loadedText));
+      return;
+    }
+    p.altstring = 0;
+    p.syntaxError();
   }
 
   // Создание выходного файла
@@ -176,6 +307,11 @@ retry:
 
   if(p.ifToken("convert1251toKOI8R")) {
     convert1251toKOI8R = !p.ifToken("OFF");
+    return;
+  }
+
+  if(p.ifToken("decimalnumbers")) {
+    p.cfg_decimalnumbers = !p.ifToken("OFF");
     return;
   }
 
@@ -211,48 +347,14 @@ retry:
     out.writePtr = (out.writePtr + a - 1) / a * a;
     return;
   }
-
   // Вставить байты
   if(p.ifToken("db")) {
-    for(;;) {
-      Parser::num_t c;
-      if(ifConst3(c)) {
-        if(p.ifToken("dup")) {
-          p.needToken("(");
-          Parser::num_t d = readConst3();
-          if(d>std::numeric_limits<unsigned char>::max()) p.syntaxError();
-          p.needToken(")");
-          for(;c>0; c--) out.write(&d, 1);
-        } else {
-          if(c>std::numeric_limits<unsigned char>::max()) p.syntaxError();
-          out.write(&c, 1);
-        }
-      } else {
-        p.needToken(ttString2);
-        if(convert1251toKOI8R) cp1251_to_koi8r(p.loadedText);
-        out.write(p.loadedText, strlen(p.loadedText));
-      }
-      if(!p.ifToken(",")) break;
-    }
+    compileByte();
     return;
   }
-
   // Вставить слово
   if(p.ifToken("dw")) {
-    for(;;) {
-      Parser::num_t c = readConst3();
-      if(p.ifToken("dup")) {
-        p.needToken("(");
-        Parser::num_t d = readConst3();
-        if(d>std::numeric_limits<unsigned short>::max()) p.syntaxError();
-        p.needToken(")");
-        for(;c>0; c--) out.write((short)d);
-      } else {
-        if(c>std::numeric_limits<unsigned short>::max()) p.syntaxError();
-        out.write((short)c);
-      }
-      if(!p.ifToken(",")) break;
-    }
+    compileWord();
     return;
   }
   if(compileLine_pdp11()) return;
@@ -274,6 +376,7 @@ void Compiler::compileFile(syschar_t* fileName) {
     step2 = s==1;
     p.init(p.source.c_str());
     out.init();      
+    strcpy(lastLabel, "undefined");
     while(!p.ifToken(ttEof)) {
       if(p.ifToken(ttEol)) continue;
       if(step2) lstWriter.beforeCompileLine();

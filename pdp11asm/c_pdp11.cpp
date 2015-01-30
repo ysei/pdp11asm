@@ -39,7 +39,7 @@ int Compiler::readReg() {
 
 bool Compiler::regInParser() {
   if(p.token==ttWord && p.tokenText[2]==0) {
-    if(p.tokenText[0]=='R' && (p.tokenText[1]>='0' || p.tokenText[1]<='5')) return true;
+    if(p.tokenText[0]=='R' && p.tokenText[1]>='0' && p.tokenText[1]<='5') return true;
     if(p.tokenText[0]=='P' && p.tokenText[1]=='C') return true;
     if(p.tokenText[0]=='S' && p.tokenText[1]=='P') return true;
   }
@@ -105,7 +105,7 @@ bool Compiler::compileLine_pdp11() {
   static SimpleCommand simpleCommands[] = {
     "halt", 0, "wait", 1, "rti", 2, "bpt", 3, "iot", 4, "reset", 5, "rtt", 6, "nop", 0240,
     "clc", 0241, "clv", 0242, "clz", 0244, "cln", 0250, "sec", 0261, "sev", 0262, 
-    "sez", 0264, "sen", 0270, "scc", 0277, "ccc", 0257, 0
+    "sez", 0264, "sen", 0270, "scc", 0277, "ccc", 0257, "ret", 0207 /*RTS PC*/, 0
   };
 
   int n;
@@ -145,7 +145,7 @@ bool Compiler::compileLine_pdp11() {
   };
 
   if(p.ifToken(jmpCommands, n)) {
-    long long i = (long long)readConst3(); //! Тут полная неразбериха с signed/unsigned, size_t/Parser::num_t
+    long long i = (long long)readConst3(true); //! Тут полная неразбериха с signed/unsigned, size_t/Parser::num_t
     i -= out.writePtr; i -= 2;
     if(i & 1) p.syntaxError("Unaligned");
     i /= 2;
@@ -195,6 +195,13 @@ bool Compiler::compileLine_pdp11() {
     Arg a;
     readArg(a);
     write(aCommands[n].code | (r<<6) | a.code, a);
+    return true;
+  }
+
+  if(p.ifToken("call")) {
+    Arg a;
+    readArg(a);    
+    write(/*JSR*/004000 | (/*PC*/7<<6) | a.code, a);
     return true;
   }
 

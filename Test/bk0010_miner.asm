@@ -2,6 +2,7 @@
 ; (c) 5-03-2012 VINXRU (aleksey.f.morozov@gmail.com)
 
 		CONVERT1251TOKOI8R
+                DECIMALNUMBERS
 	        ORG 01000
 
 ;----------------------------------------------------------------------------        

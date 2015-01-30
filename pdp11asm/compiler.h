@@ -12,15 +12,21 @@ public:
   Parser p;
   Output out;
   bool step2;
-  bool convert1251toKOI8R;
+  bool convert1251toKOI8R;  
   std::map<std::string, Parser::num_t> labels;
+  char lastLabel[Parser::maxTokenText];
 
   // c_common.cpp
   Compiler();
   void compileFile(syschar_t* fileName);
   void compileLine();
-  bool ifConst3(Parser::num_t& out);
-  Parser::num_t readConst3();
+  bool ifConst3(Parser::num_t& out, bool numIsLabel=false);
+  bool ifConst4(Parser::num_t& out, bool numIsLabel=false);
+  void makeLocalLabelName();
+  void compileByte();
+  void compileWord();
+  Parser::num_t readConst3(bool numIsLabel=false);
+  void compileOrg();
 
   // c_bitmap.cpp
   bool compileLine_bitmap();

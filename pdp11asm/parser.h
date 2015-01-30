@@ -16,8 +16,10 @@ public:
   const char** cfg_operators;
   const char** cfg_remark;
   bool cfg_caseSel;
+  char altstring;
   bool cfg_eol;
   bool cfg_cescape;
+  bool cfg_decimalnumbers; // Числа по умолчанию 10-чные, иначе 8-ричные
 
   // Для вывода ошибки
   std::string fileName; 
