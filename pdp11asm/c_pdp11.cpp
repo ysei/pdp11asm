@@ -208,7 +208,7 @@ bool Compiler::compileLine_pdp11() {
   if(p.ifToken("sob")) {
     int r = readReg();
     p.needToken(",");
-    Parser::num_t n = (out.writePtr + 2) - readConst3();
+    Parser::num_t n = (out.writePtr + 2) - readConst3(true);
     if(n&1) p.syntaxError();
     n/=2;
     if(n>63) p.syntaxError();
