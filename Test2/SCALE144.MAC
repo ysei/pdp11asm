@@ -6,12 +6,10 @@ LINE1=7600
 LINE2=7600+4000
 EntryPoint:
 	RESET
-	MOV	#STOP,@#4
-	MOV	#17400,@#177716
-	MOV	#40000,R0
-	MOV	R0,R1
+	MOV	#STOP,@#4	MOV	#17400,@#177716
+	MOV	#40000,R0       MOV	R0,R1
 	CLR	(R0)+
-	SOB	R1,.-2
+	SOB	R1,.+-2
 	MOV	#16000,@#177716
 	CALL	LOAD
 	MOV	#TICK,@#100
@@ -890,4 +888,4 @@ STOP:	MOV	#16000,@#177716
 
 
 
-	make_bk0010_rom "SCALE144.bin", EntryPoint
+	make_binary_file "SCALE144.bin", EntryPoint

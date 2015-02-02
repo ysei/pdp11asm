@@ -280,7 +280,8 @@ retry:
   }
 
   // Создание выходного файла
-  if(p.ifToken("make_bk0010_rom")) {
+  bool make_binary_file = p.ifToken("make_binary_file");
+  if(make_binary_file || p.ifToken("make_bk0010_rom")) {
     p.needToken(ttString2);
     Parser::TokenText fileName;
     strcpy_s(fileName, p.loadedText);
@@ -296,8 +297,10 @@ retry:
       std::ofstream f;
       f.open(fileName, std::ofstream::binary|std::ofstream::out);
       if(!f.is_open()) p.syntaxError("Can't create file");      
-      f.write((const char*)&start, 2);
-      f.write((const char*)&length, 2);
+      if(!make_binary_file) {
+        f.write((const char*)&start, 2);
+        f.write((const char*)&length, 2);
+      }
       f.write(out.writeBuf+start, length);
       f.close();
       lstWriter.writeFile(fileName);
@@ -383,7 +386,7 @@ void Compiler::compileFile(syschar_t* fileName) {
       compileLine();
       if(step2) lstWriter.afterCompileLine();        
       if(p.ifToken(ttEof)) break;
-      p.needToken(ttEol);
+      //! Теперь в одной строке может быть много команд  p.needToken(ttEol);
     }
   }
 }
