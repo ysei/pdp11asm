@@ -46,11 +46,20 @@ void LstWriter::afterCompileLine() {
   char info[MAX_OPCODES*7 + 16];
   char* ptr = info;
   if(!out->writePosChanged) {
-    size_t l = (out->writePtr - prev_writePtr) / 2;
-    if(l > MAX_OPCODES) l = MAX_OPCODES;
-    for(; l > 0; l--) {
-      ptr += sprintf_s(ptr, info+sizeof(info)-ptr, "%06o ", (unsigned int)(*(unsigned short*)(out->writeBuf + prev_writePtr)));
-      prev_writePtr += 2;
+    if(!hexMode) {
+      size_t l = (out->writePtr - prev_writePtr) / 2;
+      if(l > MAX_OPCODES) l = MAX_OPCODES;
+      for(; l > 0; l--) {
+        ptr += sprintf_s(ptr, info+sizeof(info)-ptr, "%06o ", (unsigned int)(*(unsigned short*)(out->writeBuf + prev_writePtr)));
+        prev_writePtr += 2;
+      }
+    } else {
+      size_t l = (out->writePtr - prev_writePtr);
+      if(l > MAX_OPCODES) l = MAX_OPCODES;
+      for(; l > 0; l--) {
+        ptr += sprintf_s(ptr, info+sizeof(info)-ptr, "%02X ", (unsigned int)(*(unsigned char*)(out->writeBuf + prev_writePtr)));
+        prev_writePtr ++;
+      }
     }
   }
   memset(ptr, ' ', info+sizeof(info)-ptr); // ѕочему то указатель - указатель не дает size_t!
@@ -64,7 +73,7 @@ void LstWriter::afterCompileLine() {
 
 //-----------------------------------------------------------------------------
 
-static void replaceExtension(std::string& out, const char* fileName, const char* ext) {
+void replaceExtension(std::string& out, const char* fileName, const char* ext) {
   const char* extSep = strrchr(fileName, '.');
   size_t fileNameLen = (extSep && strrchr(extSep, '/') == 0 && strrchr(extSep, '\\') == 0) ? (extSep - fileName) : strlen(fileName);    
   out.reserve(fileNameLen + strlen(ext));
@@ -77,8 +86,10 @@ static void replaceExtension(std::string& out, const char* fileName, const char*
 void LstWriter::writeFile(const char* fileName) {
   std::string fileName2;
   replaceExtension(fileName2, fileName, ".lst");
-  std::ofstream file;
-  file.open(fileName2.c_str());
-  if(!file.is_open()) throw std::runtime_error(("Can't create lst file (" + fileName2 + ")").c_str());
-  file << buffer;
+  if(fileName != fileName2) {
+    std::ofstream file;
+    file.open(fileName2.c_str());
+    if(!file.is_open()) throw std::runtime_error(("Can't create lst file (" + fileName2 + ")").c_str());
+    file << buffer;
+  }
 }

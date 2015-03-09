@@ -16,16 +16,16 @@ struct ImmCommand {
 //-----------------------------------------------------------------------------
 
 inline void Compiler::write(int n, Arg& a) {
-  out.write(n);
-  if(a.used) out.write(a.val - (a.subip ? short(out.writePtr+2) : 0));  
+  out.write16(n);
+  if(a.used) out.write16(a.val - (a.subip ? short(out.writePtr+2) : 0));  
 }
 
 //-----------------------------------------------------------------------------
 
 inline void Compiler::write(int n, Arg& a, Arg& b) {
-  out.write(n);
-  if(a.used) out.write(a.val - (a.subip ? short(out.writePtr+2) : 0) );  
-  if(b.used) out.write(b.val - (b.subip ? short(out.writePtr+2) : 0) );  
+  out.write16(n);
+  if(a.used) out.write16(a.val - (a.subip ? short(out.writePtr+2) : 0) );  
+  if(b.used) out.write16(b.val - (b.subip ? short(out.writePtr+2) : 0) );  
 }
 
 //-----------------------------------------------------------------------------
@@ -110,7 +110,7 @@ bool Compiler::compileLine_pdp11() {
 
   int n;
   if(p.ifToken(simpleCommands, n)) {
-    out.write(simpleCommands[n].code);
+    out.write16(simpleCommands[n].code);
     return true;
   }
 
@@ -150,7 +150,7 @@ bool Compiler::compileLine_pdp11() {
     if(i & 1) p.syntaxError("Unaligned");
     i /= 2;
     if(step2 && (i < -128 || i > 127)) p.syntaxError("Too far jump");
-    out.write((jmpCommands[n].code<<6) | (i & 0xFF));
+    out.write16((jmpCommands[n].code<<6) | (i & 0xFF));
     return true;
   }
 
@@ -163,7 +163,7 @@ bool Compiler::compileLine_pdp11() {
   if(p.ifToken(immCommands, n)) {
     p.needToken(ttInteger);
     if(p.loadedNum > immCommands[n].max) p.syntaxError();
-    out.write(immCommands[n].code | int(p.loadedNum));
+    out.write16(immCommands[n].code | int(p.loadedNum));
     return true;
   }
 
@@ -212,13 +212,13 @@ bool Compiler::compileLine_pdp11() {
     if(n&1) p.syntaxError();
     n/=2;
     if(n>63) p.syntaxError();
-    out.write(0077000 | (r<<6) | (int(n)&077));
+    out.write16(0077000 | (r<<6) | (int(n)&077));
     return true;
   }
 
   if(p.ifToken("rts")) {
     int r = readReg();
-    out.write(0000200 | r);
+    out.write16(0000200 | r);
     return true;
   }
 

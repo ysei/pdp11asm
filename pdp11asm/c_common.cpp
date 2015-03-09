@@ -55,6 +55,8 @@ static void chdirToFile(syschar_t* fileName) {
 
 Compiler::Compiler() {
   convert1251toKOI8R = false;
+  processor = P_PDP11;
+  need_create_output_file = true;
   lstWriter.out = &out;
   lstWriter.p = &p;
   p.cfg_eol = true;
@@ -101,7 +103,12 @@ itsLabel:
     }
     p.jump(l);
   }
-  if(p.ifToken(".")) { 
+  if(p.ifToken("(")) {
+    out = readConst3(numIsLabel);
+    p.needToken(")");
+    return true;
+  }
+  if(p.ifToken(".") || p.ifToken("$")) { 
     out = this->out.writePtr;
     return true;
   }
@@ -112,7 +119,7 @@ itsLabel:
 
 bool Compiler::ifConst3(Parser::num_t& a, bool numIsLabel) {
   if(!ifConst4(a, numIsLabel)) return false;
-  static const char* ops[] = { "+", "-" };
+  static const char* ops[] = { "+", "-", "*", "/", 0 };
   int o;
   while(p.ifToken(ops, o)) {
     Parser::num_t b;
@@ -120,6 +127,8 @@ bool Compiler::ifConst3(Parser::num_t& a, bool numIsLabel) {
     switch(o) {
       case 0: a += b; break;
       case 1: a -= b; break;
+      case 2: a *= b; break;
+      case 3: a /= b; break;
     }
   }
   return true;
@@ -136,10 +145,10 @@ Parser::num_t Compiler::readConst3(bool numIsLabel) {
 //-----------------------------------------------------------------------------
 
 void Compiler::compileOrg() {
-  p.needToken(ttInteger);
-  if(p.loadedNum > sizeof(out.writeBuf)) p.syntaxError();
+  Parser::num_t o = readConst3();
+  if(o < 0 || o > sizeof(out.writeBuf)) p.syntaxError();
   out.writePosChanged = true;
-  out.writePtr = (size_t)p.loadedNum;
+  out.writePtr = (size_t)o;
   return;
 }
 
@@ -154,10 +163,10 @@ void Compiler::compileByte() {
         Parser::num_t d = readConst3();
         if(d>std::numeric_limits<unsigned char>::max()) p.syntaxError();
         p.needToken(")");
-        for(;c>0; c--) out.write(&d, 1);
+        for(;c>0; c--) out.write8(d);
       } else {
         if(c>std::numeric_limits<unsigned char>::max()) p.syntaxError();
-        out.write(&c, 1);
+        out.write8(c);
       }
     } else {
       p.needToken(ttString2);
@@ -178,10 +187,10 @@ void Compiler::compileWord() {
       Parser::num_t d = readConst3();
       if(d>std::numeric_limits<unsigned short>::max()) p.syntaxError();
       p.needToken(")");
-      for(;c>0; c--) out.write((short)d);
+      for(;c>0; c--) out.write16((short)d);
     } else {
       if(c>std::numeric_limits<unsigned short>::max()) p.syntaxError();
-      out.write((short)c);
+      out.write16((short)c);
     }
     if(!p.ifToken(",")) break;
   }
@@ -197,30 +206,16 @@ void Compiler::makeLocalLabelName() {
 
 //-----------------------------------------------------------------------------
 
-void Compiler::compileLine() {
-retry:
+bool Compiler::compileLine2() {
+//retry:
   // Метки и константы определяются по второму слову
   Parser::Label l(p);
   p.nextToken();
-  bool label = (p.token==ttOperator && p.tokenText[0]==':' && p.tokenText[1]==0);
+  // Первый токен должен быть числом или строкой.	
+//  bool label = (p.token==ttOperator && p.tokenText[0]==':' && p.tokenText[1]==0);
+//  bool datadecl = (p.token==ttWord && (0==strcmp(p.tokenText, "DB") || 0==strcmp(p.tokenText, "DW") || 0==strcmp(p.tokenText, "DS")));
   bool equ   = (p.token==ttWord && 0==strcmp(p.tokenText, "EQU")) || (p.token==ttOperator && 0==strcmp(p.tokenText, "="));
   p.jump(l);
-  
-  // Это метка
-  if(label) {
-    if(p.ifToken(ttInteger)) {
-      makeLocalLabelName();
-      labels[p.loadedText] = out.writePtr;
-    } else {
-      p.needToken(ttWord);
-      labels[p.loadedText] = out.writePtr;
-      strcpy_s(lastLabel, p.loadedText);
-    }
-    p.needToken(":");    
-    // После метки может идти команда
-    if(p.token != ttEol) goto retry;
-    return;
-  }
 
   // Это константа
   if(equ) {    
@@ -230,42 +225,54 @@ retry:
     if(!p.ifToken("=")) p.needToken("equ");
     Parser::num_t a = readConst3();
     if(!step2) labels[name] = a;
-    return;
+    return true;
   }
 
   // Установка адреса
   if(p.ifToken("org")) {
     compileOrg();
-    return;
+    return true;
   }
 
   // Команды MACRO11
   if(p.ifToken(".")) {
-    // Вставить байты
-    if(p.ifToken("byte")) { 
-      compileByte();
-      return; 
+    // Выбор процессора
+    if(p.ifToken("i8080")) {
+      lstWriter.hexMode = true;
+      processor = P_8080;
+      p.cfg_decimalnumbers = true;
+      return true;
     }
-    if(p.ifToken("word")) { 
+    if(p.ifToken("PDP11")) {
+      lstWriter.hexMode = false;
+      processor = P_PDP11;
+      return true;
+    }
+    // Вставить байты
+    if(p.ifToken("db") || p.ifToken("byte")) { 
+      compileByte();
+      return true; 
+    }
+    if(p.ifToken("dw") || p.ifToken("word")) { 
       compileWord(); 
-      return; 
+      return true; 
     }
     if(p.ifToken("end")) { 
-      return; 
+      return true; 
     }
     if(p.ifToken("link")) { 
       compileOrg();
-      return; 
+      return true; 
     }
-    if(p.ifToken("blkb")) { 
+    if(p.ifToken("ds") || p.ifToken("blkb")) { 
       p.needToken(ttInteger); 
-      for(;p.tokenNum>0; p.tokenNum--) out.write("", 1);
-      return;
+      for(;p.tokenNum>0; p.tokenNum--) out.write8(0);
+      return true;
     }
     if(p.ifToken("blkw")) { 
       p.needToken(ttInteger);
-      for(;p.tokenNum>0; p.tokenNum--) out.write(0); 
-      return;
+      for(;p.tokenNum>0; p.tokenNum--) out.write16(0); 
+      return true;
     }
     p.altstring = '/';
     if(p.ifToken("ascii")) {      
@@ -273,7 +280,7 @@ retry:
       p.needToken(ttString2);
       if(convert1251toKOI8R) cp1251_to_koi8r(p.loadedText);
       out.write(p.loadedText, strlen(p.loadedText));
-      return;
+      return true;
     }
     p.altstring = 0;
     p.syntaxError();
@@ -282,6 +289,7 @@ retry:
   // Создание выходного файла
   bool make_binary_file = p.ifToken("make_binary_file");
   if(make_binary_file || p.ifToken("make_bk0010_rom")) {
+    need_create_output_file = false;
     p.needToken(ttString2);
     Parser::TokenText fileName;
     strcpy_s(fileName, p.loadedText);
@@ -305,17 +313,17 @@ retry:
       f.close();
       lstWriter.writeFile(fileName);
     }
-    return;
+    return true;
   }
 
   if(p.ifToken("convert1251toKOI8R")) {
     convert1251toKOI8R = !p.ifToken("OFF");
-    return;
+    return true;
   }
 
   if(p.ifToken("decimalnumbers")) {
     p.cfg_decimalnumbers = !p.ifToken("OFF");
-    return;
+    return true;
   }
 
   if(p.ifToken("insert_file")) {
@@ -337,9 +345,10 @@ retry:
     if(step2) {
       f.rdbuf()->pubseekoff(start, std::ifstream::beg);
       f.rdbuf()->sgetn(out.writePtr+out.writeBuf, size);
+      out.write(out.writePtr+out.writeBuf, size);
     }
-    out.writePtr += (int)size; // Переполнение проверено выше
-    return;
+//    out.writePtr += (int)size; // Переполнение проверено выше
+    return true;
   }
 
   // Выровнять код
@@ -348,20 +357,51 @@ retry:
     if(p.loadedNum < 1 || p.loadedNum >= std::numeric_limits<size_t>::max()) p.syntaxError();
     size_t a = size_t(p.loadedNum);
     out.writePtr = (out.writePtr + a - 1) / a * a;
-    return;
+    return true;
   }
   // Вставить байты
   if(p.ifToken("db")) {
     compileByte();
-    return;
+    return true;
   }
   // Вставить слово
   if(p.ifToken("dw")) {
     compileWord();
-    return;
+    return true;
   }
-  if(compileLine_pdp11()) return;
-  if(compileLine_bitmap()) return;
+  if(p.ifToken("end")) return true;
+  if(p.ifToken("ds")) { 
+    p.needToken(ttInteger); 
+    for(;p.tokenNum>0; p.tokenNum--) out.write8(0);
+    return true;
+  }
+  switch(processor) {
+    case P_PDP11: if(compileLine_pdp11()) return true; break;
+    case P_8080: if(compileLine_8080()) return true; break;
+  }
+  if(compileLine_bitmap()) return true;
+  return false;
+}
+
+void Compiler::compileLine() {
+  if(compileLine2()) return;
+
+  // Это метка
+  if(p.ifToken(ttInteger)) {
+    makeLocalLabelName();
+    labels[p.loadedText] = out.writePtr;
+  } else {
+    p.needToken(ttWord);
+    labels[p.loadedText] = out.writePtr;
+    strcpy_s(lastLabel, p.loadedText);
+  }
+  // Не обязательно
+  p.ifToken(":");
+  // После метки может идти команда
+  if(p.token == ttEol) return;
+
+  if(compileLine2()) return;
+
   p.syntaxError();
 }
 
@@ -387,6 +427,19 @@ void Compiler::compileFile(syschar_t* fileName) {
       if(step2) lstWriter.afterCompileLine();        
       if(p.ifToken(ttEof)) break;
       //! Теперь в одной строке может быть много команд  p.needToken(ttEol);
+    }
+  }
+
+  if(need_create_output_file && out.min<out.max) {
+    std::string fileName2;
+    replaceExtension(fileName2, fileName, ".bin");
+    if(fileName != fileName2) {
+      std::ofstream f;
+      f.open(fileName2.c_str(), std::ofstream::binary|std::ofstream::out);
+      if(!f.is_open()) p.syntaxError("Can't create file");      
+      f.write(out.writeBuf+out.min, out.max-out.min);
+      f.close();
+      lstWriter.writeFile(fileName);    
     }
   }
 }

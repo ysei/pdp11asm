@@ -8,17 +8,22 @@
 
 class Compiler {
 public:
+  enum Processor { P_PDP11, P_8080 };
+
   LstWriter lstWriter;
   Parser p;
   Output out;
+  bool need_create_output_file;
   bool step2;
   bool convert1251toKOI8R;  
+  Processor processor;
   std::map<std::string, Parser::num_t> labels;
   char lastLabel[Parser::maxTokenText];
 
   // c_common.cpp
   Compiler();
   void compileFile(syschar_t* fileName);
+  bool compileLine2();
   void compileLine();
   bool ifConst3(Parser::num_t& out, bool numIsLabel=false);
   bool ifConst4(Parser::num_t& out, bool numIsLabel=false);
@@ -45,6 +50,9 @@ public:
   int readReg();
   void readArg(Arg& a);
   bool compileLine_pdp11();
+
+  // c_8080.cpp
+  bool compileLine_8080();
 };
 
 //-----------------------------------------------------------------------------
@@ -53,3 +61,5 @@ inline size_t ullong2size_t(unsigned long long a) {
   if(a > std::numeric_limits<size_t>::max()) throw std::runtime_error("Too big number");
   return (size_t)a;
 }
+
+void replaceExtension(std::string& out, const char* fileName, const char* ext);

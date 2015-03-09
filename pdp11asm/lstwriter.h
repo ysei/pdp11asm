@@ -12,8 +12,9 @@ public:
   const char* prev_sigCursor;
   Output* out;
   Parser* p;
+  bool hexMode;
 
-  inline LstWriter() { prev_writePtr=0; prev_sigCursor=0; out=0; p=0; }
+  inline LstWriter() { hexMode=false; prev_writePtr=0; prev_sigCursor=0; out=0; p=0; }
   void beforeCompileLine();
   void afterCompileLine();
   void writeFile(const char* fileName);
