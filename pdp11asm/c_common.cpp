@@ -157,6 +157,10 @@ void Compiler::compileOrg() {
 void Compiler::compileByte() {
   for(;;) {
     Parser::num_t c;
+    if(p.ifToken(ttString1) || p.ifToken(ttString2)) {
+      if(convert1251toKOI8R) cp1251_to_koi8r(p.loadedText);
+      out.write(p.loadedText, strlen(p.loadedText));
+    } else
     if(ifConst3(c)) {
       if(p.ifToken("dup")) {
         p.needToken("(");
@@ -169,9 +173,7 @@ void Compiler::compileByte() {
         out.write8(c);
       }
     } else {
-      p.needToken(ttString2);
-      if(convert1251toKOI8R) cp1251_to_koi8r(p.loadedText);
-      out.write(p.loadedText, strlen(p.loadedText));
+      p.syntaxError();
     }
     if(!p.ifToken(",")) break;
   }
