@@ -57,7 +57,7 @@ void Compiler::readArg(Arg& a) {
 
   Parser::num_t ii;
   if(ifConst3(ii)) { // Вычесть из адреса смещение, если не поствалены @ #
-    a.subip = (!x && !n); 
+	    a.subip = (!x && !n); 
     a.val = short(ii); // Без контроля переполнения
     a.used = true;
     Parser::Label pl(p);
@@ -137,8 +137,9 @@ bool Compiler::compileLine_pdp11() {
   // Комманды перехода
   
   static SimpleCommand jmpCommands[] = { 
-    "br",  00004, "bne",  00010, "beq", 00014, "bge", 00020, "blt", 00024, 
-    "bgt", 00030, "ble", 00034, "bpl",  01000, "bmi", 01004, "bhi", 01010, 
+    "br",  00004, "bne", 00010, "beq", 00014, "bge", 00020, "blt", 00024, 
+    "bgt", 00030, "ble", 00034, "bpl", 01000, "bmi", 01004, "bhi", 01010, 
+	"bvs", 01020, 
     "bvc", 01024, "bhis", 01030, "bcc", 01030, "blo", 01034, "bcs", 01034,
     "blos", 01014, 
     0 

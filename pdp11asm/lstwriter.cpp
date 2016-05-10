@@ -3,7 +3,6 @@
 #include "stdafx.h"
 #include "lstwriter.h"
 #include <string>
-#include <fstream>
 #include <assert.h>
 #include "compiler.h"
 
@@ -69,27 +68,4 @@ void LstWriter::afterCompileLine() {
   appendBuffer(info);
   appendBuffer(prev_sigCursor, linelen(prev_sigCursor));
   appendBuffer("\r\n");  
-}
-
-//-----------------------------------------------------------------------------
-
-void replaceExtension(std::string& out, const char* fileName, const char* ext) {
-  const char* extSep = strrchr(fileName, '.');
-  size_t fileNameLen = (extSep && strrchr(extSep, '/') == 0 && strrchr(extSep, '\\') == 0) ? (extSep - fileName) : strlen(fileName);    
-  out.reserve(fileNameLen + strlen(ext));
-  out.assign(fileName, fileNameLen);
-  out += ext;  
-}
-
-//-----------------------------------------------------------------------------
-
-void LstWriter::writeFile(const char* fileName) {
-  std::string fileName2;
-  replaceExtension(fileName2, fileName, ".lst");
-  if(fileName != fileName2) {
-    std::ofstream file;
-    file.open(fileName2.c_str());
-    if(!file.is_open()) throw std::runtime_error(("Can't create lst file (" + fileName2 + ")").c_str());
-    file << buffer;
-  }
 }

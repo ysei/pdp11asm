@@ -103,7 +103,9 @@ itsLabel:
     }
     p.jump(l);
   }
+  Parser::Label pl(p);
   if(p.ifToken("(")) {
+	if(regInParser()) { p.jump(pl); return false; }
     out = readConst3(numIsLabel);
     p.needToken(")");
     return true;
@@ -167,10 +169,10 @@ void Compiler::compileByte() {
         Parser::num_t d = readConst3();
         if(d>std::numeric_limits<unsigned char>::max()) p.syntaxError();
         p.needToken(")");
-        for(;c>0; c--) out.write8(d);
+        for(;c>0; c--) out.write8((unsigned char)d);
       } else {
         if(c>std::numeric_limits<unsigned char>::max()) p.syntaxError();
-        out.write8(c);
+        out.write8((unsigned char)c);
       }
     } else {
       p.syntaxError();
@@ -332,7 +334,7 @@ bool Compiler::compileLine2() {
     p.needToken(ttString2);
     Parser::TokenText fileName;
     strcpy_s(fileName, p.loadedText);
-    long long start=0, size=0;
+    size_t start=0, size=0;
     if(p.ifToken(",")) {
       start = ullong2size_t(readConst3());
       if(p.ifToken(",")) size = ullong2size_t(readConst3());
@@ -341,7 +343,7 @@ bool Compiler::compileLine2() {
     if(size==0 || step2) {
       f.open(fileName, std::ifstream::binary|std::ifstream::in);
       if(!f.is_open()) p.syntaxError("Can't open file");
-      if(size==0) size = f.rdbuf()->pubseekoff(0, std::ifstream::end);  //! Тут может быть переполнение
+      if(size==0) size = (size_t)f.rdbuf()->pubseekoff(0, std::ifstream::end);  //! Тут может быть переполнение
     }
     if(size<0 || out.writePtr+size>=65536) p.syntaxError();
     if(step2) {
@@ -386,6 +388,7 @@ bool Compiler::compileLine2() {
 }
 
 void Compiler::compileLine() {
+  for(;;) {
   if(compileLine2()) return;
 
   // Это метка
@@ -399,12 +402,11 @@ void Compiler::compileLine() {
   }
   // Не обязательно
   p.ifToken(":");
+
   // После метки может идти команда
   if(p.token == ttEol) return;
-
-  if(compileLine2()) return;
-
-  p.syntaxError();
+  if(p.token == ttEof) return;
+  }
 }
 
 //-----------------------------------------------------------------------------
@@ -433,8 +435,7 @@ void Compiler::compileFile(syschar_t* fileName) {
   }
 
   if(need_create_output_file && out.min<out.max) {
-    std::string fileName2;
-    replaceExtension(fileName2, fileName, ".bin");
+	sysstring_t fileName2 = removeExtension<sysstring_t>(fileName) + _T(".bin");
     if(fileName != fileName2) {
       std::ofstream f;
       f.open(fileName2.c_str(), std::ofstream::binary|std::ofstream::out);

@@ -1,8 +1,8 @@
 @echo off
 cls
-pdp11asm.exe SCALE144.MAC
+..\release\pdp11asm.exe SCALE144.MAC
 if errorlevel 1 goto error
-start C:\emu\EMU.exe SCALE144.BIN
+start d:\bin\emu\EMU.exe SCALE144.BIN
 exit
 :error
 pause

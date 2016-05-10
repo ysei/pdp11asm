@@ -10,7 +10,7 @@ public:
   char writeBuf[65536];
   size_t writePtr;
   bool writePosChanged;
-  int min, max;
+  size_t min, max;
 
   inline Output() {
     init();

@@ -86,6 +86,7 @@
     <ClInclude Include="stdafx.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="c_8080.cpp" />
     <ClCompile Include="c_bitmap.cpp" />
     <ClCompile Include="c_common.cpp" />
     <ClCompile Include="c_pdp11.cpp" />

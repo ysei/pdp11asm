@@ -16,6 +16,10 @@ inline int _strcmpi(const char* a, const char* b) { return strcasecmp(a, b); }
 
 //  омандна€ строка в Linux
 typedef char syschar_t;
+typedef std::string sysstring_t;
+#ifndef _T
+#define _T(S) S
+#endif
 
 #else
 
@@ -24,6 +28,10 @@ typedef char syschar_t;
 
 //  омандна€ строка в Windows
 typedef wchar_t syschar_t;
+typedef std::wstring sysstring_t;
+#ifndef _T
+#define _T(S) L##S
+#endif
 
 // перечислитель ? в операторе switch с перечислением ? не обрабатываетс€
 #pragma warning(disable:4062) 

@@ -62,4 +62,11 @@ inline size_t ullong2size_t(unsigned long long a) {
   return (size_t)a;
 }
 
-void replaceExtension(std::string& out, const char* fileName, const char* ext);
+//-----------------------------------------------------------------------------
+
+template<class A>
+A removeExtension(A fileName) {
+  int s = fileName.rfind('.');
+  if(s==-1 || fileName.find('/', s)!=-1 || fileName.find('\\', s)!=-1) return fileName;
+  return fileName.substr(0,s);
+}
